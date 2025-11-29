@@ -78,7 +78,7 @@ public class JuegoPrincipal extends JPanel implements ActionListener, KeyListene
         setBackground(coloresFondo[0]);
         setLayout(new BorderLayout());
 
-        timer = new Timer(16, this);
+        timer = new Timer(8, this);
         puntuacion = 0;
         mejorPuntuacion = 0;
         juegoActivo = false;
