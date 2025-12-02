@@ -1,5 +1,6 @@
 package FlappyBird;
 
+import javax.sound.sampled.*;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
@@ -8,7 +9,8 @@ import java.util.Random;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.Collections;
-import java.util.Comparator;
+import java.awt.image.BufferedImage;
+import java.io.File;
 
 public class JuegoPrincipal extends JPanel implements ActionListener, KeyListener {
     private Timer timer;
@@ -34,11 +36,19 @@ public class JuegoPrincipal extends JPanel implements ActionListener, KeyListene
     private int contadorCambioNivel;
     private boolean entrenamientoCompletado;
 
-    // Solo 2 colores que alternan por nivel
-    private Color[] coloresFondo = {
-            new Color(135, 206, 235), // Azul cielo
-            new Color(169, 169, 169)  // Gris
-    };
+    private Image imgFondoDia;
+    private Image imgFondoNoche;
+    private Image imgBase;
+    // Variables para la animación de la base
+    private int baseScrollX1 = 0;
+    private int baseScrollX2;
+    private static final int VELOCIDAD_BASE = 2;
+    
+    // Variables para sonidos
+    private Clip sonidoSalto;
+    private Clip sonidoColision;
+    private Clip sonidoMuerte;
+    private boolean sonidosCargados = false;
 
     // Constantes del juego
     private static final int ANCHO = 1000;
@@ -73,12 +83,12 @@ public class JuegoPrincipal extends JPanel implements ActionListener, KeyListene
     private int mejorRecordAnterior;
     private double mejorFitnessAnterior;
 
+    // Modificar el constructor para cargar las imágenes y sonidos
     public JuegoPrincipal() {
         setPreferredSize(new Dimension(ANCHO, ALTO));
-        setBackground(coloresFondo[0]);
         setLayout(new BorderLayout());
 
-        timer = new Timer(8, this);
+        timer = new Timer(14, this);
         puntuacion = 0;
         mejorPuntuacion = 0;
         juegoActivo = false;
@@ -95,9 +105,22 @@ public class JuegoPrincipal extends JPanel implements ActionListener, KeyListene
         mejorRecordAnterior = 0;
         mejorFitnessAnterior = 0;
 
+        // Cargar las imágenes y sonidos
+        cargarImagenes();
+        cargarSonidos();
+        
         crearPanelControl();
         addKeyListener(this);
         setFocusable(true);
+       
+        try {
+            Pajaro.sprites[0] = Toolkit.getDefaultToolkit().getImage("src\\data\\bird1.png");
+            Pajaro.sprites[1] = Toolkit.getDefaultToolkit().getImage("src\\data\\bird2.png");
+            Pajaro.sprites[2] = Toolkit.getDefaultToolkit().getImage("src\\data\\bird3.png");
+            Pajaro.setJuegoRef(this);Pajaro.setJuegoRef(this);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 
         addMouseListener(new MouseAdapter() {
             @Override
@@ -105,6 +128,96 @@ public class JuegoPrincipal extends JPanel implements ActionListener, KeyListene
                 requestFocusInWindow();
             }
         });
+    }
+    
+    private void cargarSonidos() {
+        try {
+            // Cargar sonido de salto (wing.mp3)
+            File archivoSalto = new File("src\\data\\wing.wav");
+            if (archivoSalto.exists()) {
+                AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(archivoSalto);
+                sonidoSalto = AudioSystem.getClip();
+                sonidoSalto.open(audioInputStream);
+            } else {
+                System.err.println("No se encontró wing.mp3 en src\\data\\");
+            }
+            
+            // Cargar sonido de colisión (hit.mp3)
+            File archivoColision = new File("src\\data\\hit.wav");
+            if (archivoColision.exists()) {
+                AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(archivoColision);
+                sonidoColision = AudioSystem.getClip();
+                sonidoColision.open(audioInputStream);
+            } else {
+                System.err.println("No se encontró hit.mp3 en src\\data\\");
+            }
+            
+            // Cargar sonido de muerte (die.mp3)
+            File archivoMuerte = new File("src\\data\\die.wav");
+            if (archivoMuerte.exists()) {
+                AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(archivoMuerte);
+                sonidoMuerte = AudioSystem.getClip();
+                sonidoMuerte.open(audioInputStream);
+            } else {
+                System.err.println("No se encontró die.mp3 en src\\data\\");
+            }
+            
+            sonidosCargados = true;
+            
+        } catch (Exception e) {
+            System.err.println("Error cargando sonidos: " + e.getMessage());
+            sonidosCargados = false;
+        }
+    }
+    
+    public void reproducirSonidoSalto() {
+        if (sonidosCargados && sonidoSalto != null) {
+            // Reiniciar el sonido si ya está reproduciéndose
+            if (sonidoSalto.isRunning()) {
+                sonidoSalto.stop();
+            }
+            sonidoSalto.setFramePosition(0);
+            sonidoSalto.start();
+        }
+    }
+    
+    public void reproducirSonidoColision() {
+        if (sonidosCargados && sonidoColision != null) {
+            // No reiniciamos si ya está sonando, para que se complete
+            if (!sonidoColision.isRunning()) {
+                sonidoColision.setFramePosition(0);
+                sonidoColision.start();
+            }
+        }
+    }
+    
+    public void reproducirSonidoMuerte() {
+        if (sonidosCargados && sonidoMuerte != null) {
+            // Esperar un momento para que el sonido de colisión termine
+            new Thread(() -> {
+                try {
+                    Thread.sleep(100); // Pequeña pausa
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                if (!sonidoMuerte.isRunning()) {
+                    sonidoMuerte.setFramePosition(0);
+                    sonidoMuerte.start();
+                }
+            }).start();
+        }
+    }
+    
+    private void cerrarSonidos() {
+        if (sonidoSalto != null) {
+            sonidoSalto.close();
+        }
+        if (sonidoColision != null) {
+            sonidoColision.close();
+        }
+        if (sonidoMuerte != null) {
+            sonidoMuerte.close();
+        }
     }
 
     private void crearPanelControl() {
@@ -217,6 +330,45 @@ public class JuegoPrincipal extends JPanel implements ActionListener, KeyListene
         iniciarJuego();
         requestFocusInWindow();
     }
+    private void cargarImagenes() {
+        try {
+            // Cargar imágenes de fondo
+            imgFondoDia = Toolkit.getDefaultToolkit().getImage("src\\data\\dayCity.png");
+            imgFondoNoche = Toolkit.getDefaultToolkit().getImage("src\\data\\nightCity.png");
+            imgBase = Toolkit.getDefaultToolkit().getImage("src\\data\\base.png");
+            
+            // Esperar a que las imágenes se carguen
+            MediaTracker tracker = new MediaTracker(this);
+            tracker.addImage(imgFondoDia, 0);
+            tracker.addImage(imgFondoNoche, 1);
+            tracker.addImage(imgBase, 2);
+            
+            try {
+                tracker.waitForAll();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            
+            // Calcular posición inicial de la segunda base para scroll continuo
+            baseScrollX2 = imgBase.getWidth(this);
+            
+        } catch (Exception e) {
+            System.err.println("Error al cargar imágenes: " + e.getMessage());
+            // Crear imágenes de respaldo en caso de error
+            imgFondoDia = crearImagenRespaldo(new Color(135, 206, 235)); // Azul cielo
+            imgFondoNoche = crearImagenRespaldo(new Color(25, 25, 112)); // Azul noche
+            imgBase = crearImagenRespaldo(new Color(222, 184, 135)); // Color base
+        }
+    }
+    // Método para crear imágenes de respaldo si las originales no se cargan
+    private Image crearImagenRespaldo(Color color) {
+        BufferedImage img = new BufferedImage(ANCHO, ALTO, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2d = img.createGraphics();
+        g2d.setColor(color);
+        g2d.fillRect(0, 0, ANCHO, ALTO);
+        g2d.dispose();
+        return img;
+    }
 
     public void iniciarModoML() {
         modoEntrenamiento = true;
@@ -248,6 +400,11 @@ public class JuegoPrincipal extends JPanel implements ActionListener, KeyListene
 
         tuberias = new ArrayList<>();
         siguienteIdTuberia = 0;
+        
+        // Resetear posición de la base
+        baseScrollX1 = 0;
+        baseScrollX2 = imgBase != null ? imgBase.getWidth(this) : ANCHO;
+        
         agregarTuberia();
         puntuacion = 0;
         tuberiasPasadasNivel = 0;
@@ -373,17 +530,51 @@ public class JuegoPrincipal extends JPanel implements ActionListener, KeyListene
     }
 
     public void agregarTuberia() {
-        int alturaMinima = 50;
-        int alturaMaxima = ALTO - ESPACIO_TUBERIAS - alturaMinima;
-        int alturaSuperior = new Random().nextInt(alturaMaxima - alturaMinima) + alturaMinima;
-
+        int alturaMinima = 80; 
+        int espacioMinimoInferior = 80; 
+        
+        int alturaMaximaSuperior = ALTO - ESPACIO_TUBERIAS - espacioMinimoInferior;
+        
+        if (alturaMinima > alturaMaximaSuperior) {
+            alturaMinima = alturaMaximaSuperior / 2;
+        }
+        
+        int alturaSuperior;
+        if (alturaMaximaSuperior > alturaMinima) {
+            alturaSuperior = new Random().nextInt(alturaMaximaSuperior - alturaMinima) + alturaMinima;
+        } else {
+            alturaSuperior = alturaMinima;
+        }
+        
+        int alturaInferior = ALTO - (alturaSuperior + ESPACIO_TUBERIAS);
+        
+        if (alturaSuperior < 20 || alturaInferior < 20) {
+            alturaSuperior = Math.max(alturaSuperior, 20);
+            alturaInferior = Math.max(alturaInferior, 20);
+            
+            // Recalcular si es necesario
+            if (alturaSuperior + ESPACIO_TUBERIAS + alturaInferior > ALTO) {
+                // Ajustar la superior para que todo quepa
+                alturaSuperior = ALTO - ESPACIO_TUBERIAS - 20;
+                alturaInferior = 20;
+            }
+        }
+        
         int id = siguienteIdTuberia++;
 
+        // Crear tubería superior
         tuberias.add(new Tuberia(ANCHO, 0, ANCHO_TUBERIA, alturaSuperior, id, true));
-        tuberias.add(new Tuberia(ANCHO, alturaSuperior + ESPACIO_TUBERIAS,
-                ANCHO_TUBERIA, ALTO - alturaSuperior - ESPACIO_TUBERIAS, id, false));
+        
+        // Crear tubería inferior (asegurándose de que esté dentro de la pantalla)
+        int yInferior = alturaSuperior + ESPACIO_TUBERIAS;
+        tuberias.add(new Tuberia(ANCHO, yInferior, ANCHO_TUBERIA, alturaInferior, id, false));
+        
+        // Depuración: mostrar información de las tuberías creadas
+        System.out.println("Tubería creada - ID: " + id + 
+                        ", Superior: " + alturaSuperior + "px" +
+                        ", Inferior: " + alturaInferior + "px" +
+                        ", Espacio: " + ESPACIO_TUBERIAS + "px");
     }
-
     public void actualizar() {
         if (!juegoActivo || (modoEntrenamiento && entrenamientoPausado)) return;
 
@@ -470,8 +661,40 @@ public class JuegoPrincipal extends JPanel implements ActionListener, KeyListene
             }
         }
 
-        if (tuberias.isEmpty() || tuberias.get(tuberias.size() - 1).x < ANCHO - DISTANCIA_TUBERIAS) {
+        // Contar cuántas tuberías completas (pares de superior+inferior) tenemos
+        Set<Integer> idsActivos = new HashSet<>();
+        for (Tuberia tuberia : tuberias) {
+            idsActivos.add(tuberia.id);
+        }
+        
+        // Si no hay tuberías, agregar una
+        if (idsActivos.isEmpty()) {
             agregarTuberia();
+        }
+        
+        // Encontrar la tubería más a la derecha
+        int maxX = -1;
+        for (Tuberia tuberia : tuberias) {
+            if (tuberia.x > maxX) {
+                maxX = tuberia.x;
+            }
+        }
+        
+        // Agregar nueva tubería cuando la última esté suficientemente lejos
+        if (maxX < ANCHO - DISTANCIA_TUBERIAS) {
+            agregarTuberia();
+        }
+        
+        // Actualizar scroll de la base
+        baseScrollX1 -= VELOCIDAD_BASE;
+        baseScrollX2 -= VELOCIDAD_BASE;
+        
+        // Reiniciar posición cuando la imagen sale completamente de la pantalla
+        if (baseScrollX1 <= -imgBase.getWidth(this)) {
+            baseScrollX1 = imgBase.getWidth(this) + baseScrollX2 - VELOCIDAD_BASE;
+        }
+        if (baseScrollX2 <= -imgBase.getWidth(this)) {
+            baseScrollX2 = imgBase.getWidth(this) + baseScrollX1 - VELOCIDAD_BASE;
         }
     }
 
@@ -480,6 +703,8 @@ public class JuegoPrincipal extends JPanel implements ActionListener, KeyListene
 
         for (Tuberia tuberia : tuberias) {
             if (tuberia.colisionaCon(pajaro)) {
+                // Reproducir sonido de colisión
+                reproducirSonidoColision();
                 return true;
             }
         }
@@ -606,6 +831,8 @@ public class JuegoPrincipal extends JPanel implements ActionListener, KeyListene
         actualizarUI();
 
         if (vidas <= 0) {
+            // Reproducir sonido de muerte
+            reproducirSonidoMuerte();
             terminarJuego();
         } else {
             pajaro = new Pajaro(ANCHO / 4, ALTO / 2);
@@ -615,7 +842,7 @@ public class JuegoPrincipal extends JPanel implements ActionListener, KeyListene
         }
     }
 
-    public void terminarJuego() {
+     public void terminarJuego() {
         juegoActivo = false;
         timer.stop();
 
@@ -626,6 +853,7 @@ public class JuegoPrincipal extends JPanel implements ActionListener, KeyListene
                     "Fin del Juego", JOptionPane.INFORMATION_MESSAGE);
         }
     }
+
 
     private void actualizarUI() {
         if (modoEntrenamiento && generacion != null) {
@@ -649,13 +877,16 @@ public class JuegoPrincipal extends JPanel implements ActionListener, KeyListene
         lblNivel.setText("Nivel: " + nivel);
     }
 
-    @Override
+     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
 
         if (!juegoActivo) {
             if (entrenamientoCompletado) {
-                // Mostrar mensaje de entrenamiento completado
+                // Dibujar fondo
+                dibujarFondo(g);
+                
+                // Capa semitransparente
                 g.setColor(new Color(0, 0, 0, 128));
                 g.fillRect(0, 0, ANCHO - 250, ALTO);
 
@@ -673,14 +904,15 @@ public class JuegoPrincipal extends JPanel implements ActionListener, KeyListene
                 String reiniciar = "o 'Reiniciar' para empezar desde el nivel 1";
                 width = g.getFontMetrics().stringWidth(reiniciar);
                 g.drawString(reiniciar, (ANCHO - 250 - width) / 2, ALTO / 2 + 30);
+                
+                // Dibujar base
+                dibujarBase(g);
             }
             return;
         }
 
-        // Alternar entre azul cielo y gris por nivel (nivel impar: azul, nivel par: gris)
-        Color colorFondo = coloresFondo[(nivel - 1) % 2];
-        g.setColor(colorFondo);
-        g.fillRect(0, 0, ANCHO - 250, ALTO);
+        // Dibujar fondo (alterna entre día y noche según el nivel)
+        dibujarFondo(g);
 
         for (Tuberia tuberia : tuberias) {
             tuberia.dibujar(g);
@@ -696,7 +928,14 @@ public class JuegoPrincipal extends JPanel implements ActionListener, KeyListene
             pajaro.dibujar(g);
         }
 
-        g.setColor(Color.BLACK);
+        // Dibujar base
+        dibujarBase(g);
+
+        // Dibujar texto sobre la base (con fondo semitransparente para mejor legibilidad)
+        g.setColor(new Color(0, 0, 0, 150));
+        g.fillRect(10, 10, 200, 100);
+        
+        g.setColor(Color.WHITE);
         g.setFont(new Font("Arial", Font.BOLD, 24));
         g.drawString("Puntuación: " + puntuacion, 20, 30);
         g.drawString("Nivel: " + nivel, 20, 60);
@@ -709,7 +948,8 @@ public class JuegoPrincipal extends JPanel implements ActionListener, KeyListene
         }
 
         if (cambiandoNivel) {
-            g.setColor(new Color(0, 0, 0, 128));
+            // Capa semitransparente sobre todo
+            g.setColor(new Color(0, 0, 0, 180));
             g.fillRect(0, 0, ANCHO - 250, ALTO);
 
             g.setColor(Color.WHITE);
@@ -733,6 +973,37 @@ public class JuegoPrincipal extends JPanel implements ActionListener, KeyListene
         }
         return count;
     }
+    private void dibujarFondo(Graphics g) {
+        // Alternar entre fondo día y noche: niveles impares = día, niveles pares = noche
+        Image fondoActual = (nivel % 2 == 1) ? imgFondoDia : imgFondoNoche;
+        
+        if (fondoActual != null) {
+            // Dibujar la imagen del fondo escalada al tamaño de la ventana
+            g.drawImage(fondoActual, 0, 0, ANCHO - 250, ALTO, this);
+        } else {
+            // Fallback en caso de que no se cargue la imagen
+            Color colorFondo = (nivel % 2 == 1) ? 
+                new Color(135, 206, 235) : // Azul cielo para día
+                new Color(25, 25, 112);    // Azul noche para noche
+            g.setColor(colorFondo);
+            g.fillRect(0, 0, ANCHO - 250, ALTO);
+        }
+    }
+    private void dibujarBase(Graphics g) {
+        if (imgBase != null) {
+            int alturaBase = 45; // Altura fija para la base
+            
+            // Dibujar la base en dos posiciones para scroll continuo
+            g.drawImage(imgBase, baseScrollX1, ALTO - alturaBase, 
+                       imgBase.getWidth(this), alturaBase, this);
+            g.drawImage(imgBase, baseScrollX2, ALTO - alturaBase, 
+                       imgBase.getWidth(this), alturaBase, this);
+        } else {
+            // Fallback: dibujar base sólida
+            g.setColor(new Color(222, 184, 135));
+            g.fillRect(0, ALTO - 100, ANCHO - 250, 100);
+        }
+    }
 
     @Override
     public void actionPerformed(ActionEvent e) {
@@ -743,6 +1014,8 @@ public class JuegoPrincipal extends JPanel implements ActionListener, KeyListene
     public void keyPressed(KeyEvent e) {
         if (e.getKeyCode() == KeyEvent.VK_SPACE && juegoActivo && !modoEntrenamiento && pajaro != null) {
             pajaro.saltar();
+            // Reproducir sonido de salto
+            reproducirSonidoSalto();
         }
     }
 
@@ -763,6 +1036,13 @@ public class JuegoPrincipal extends JPanel implements ActionListener, KeyListene
         frame.setVisible(true);
 
         juego.requestFocusInWindow();
+        
+        // Añadir listener para cerrar sonidos cuando se cierre la ventana
+        frame.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                juego.cerrarSonidos();
+            }
+        });
     }
 }
-

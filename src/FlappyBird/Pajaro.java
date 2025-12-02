@@ -2,6 +2,7 @@ package FlappyBird;
 
 import java.awt.*;
 import java.util.Random;
+import FlappyBird.JuegoPrincipal;
 
 public class Pajaro {
     public int x, y;
@@ -10,6 +11,12 @@ public class Pajaro {
     public static final int ALTO = 30;
     private static final int GRAVEDAD = 1;
     private static final int FUERZA_SALTO = -15;
+    public static Image[] sprites = new Image[3];
+    private int frame = 0;
+    private int animCounter = 0;
+
+    // Referencia al juego para reproducir sonidos
+    private static JuegoPrincipal juegoRef;
 
     public RedNeuronal cerebro;
     public boolean vivo;
@@ -28,6 +35,11 @@ public class Pajaro {
         this.cerebro = new RedNeuronal();
     }
 
+    // Método estático para establecer referencia al juego
+    public static void setJuegoRef(JuegoPrincipal juego) {
+        juegoRef = juego;
+    }
+
     public void actualizar() {
         if (!vivo) return;
 
@@ -39,20 +51,34 @@ public class Pajaro {
     public void saltar() {
         if (!vivo) return;
         velocidadY = FUERZA_SALTO;
+        
+        // Reproducir sonido de salto si hay referencia al juego
+        if (juegoRef != null) {
+            juegoRef.reproducirSonidoSalto();
+        }
     }
 
     public void dibujar(Graphics g) {
         if (!vivo) return;
 
-        g.setColor(Color.YELLOW);
-        g.fillRect(x, y, ANCHO, ALTO);
+        Graphics2D g2 = (Graphics2D) g;
 
-        g.setColor(Color.BLACK);
-        g.fillRect(x + 20, y + 10, 5, 5);
+        animCounter++;
+        if (animCounter >= 5) {
+            frame = (frame + 1) % 3;
+            animCounter = 0;
+        }
 
-        g.setColor(Color.ORANGE);
-        g.fillRect(x + 5, y + 15, 15, 8);
+        double rotationAngle = velocidadY * 0.05;
+
+        g2.rotate(rotationAngle, x + ANCHO/2, y + ALTO/2);
+
+        g2.drawImage(sprites[frame], x, y, ANCHO, ALTO, null);
+
+        g2.rotate(-rotationAngle, x + ANCHO/2, y + ALTO/2);
     }
+
+
 
     public void pensar(Tuberia tuberiaCercana) {
         if (!vivo || cerebro == null || tuberiaCercana == null) return;
